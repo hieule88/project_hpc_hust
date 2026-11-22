@@ -7,3 +7,4 @@ output/*_prof.txt
 output/*_omp.txt
 __pycache__/
 *.o
+.naive/

@@ -13,6 +13,8 @@
  *
  * Include this file AFTER the implementation defines: Transformer, Tokenizer, Sampler,
  * forward(), encode(), decode(), build_sampler(), free_sampler(), sample().
+ * Define HARNESS_NO_RUN_TEST to get only the helpers (batched implementations have their
+ * own request loop but must keep the same stop rule, output format and RESULT line).
  * The file is valid C and C++ (gcc compiles it into runtest.c, nvcc into run.cu).
  */
 #ifndef HARNESS_H
@@ -97,6 +99,17 @@ static void free_requests(Requests *r) {
     free(r->outputs);
 }
 
+// The one-line summary parsed by bench.sh. Batched implementations call it directly.
+static void print_result(const char *impl, const char *model_path, int num_reqs, int steps,
+                         long fwd_tokens, long gen_tokens, double elapsed) {
+    const char *model_name = strrchr(model_path, '/');
+    model_name = model_name ? model_name + 1 : model_path;
+    printf("RESULT impl=%s model=%s reqs=%d steps=%d fwd_tokens=%ld gen_tokens=%ld "
+           "elapsed_s=%.3f fwd_tok_s=%.2f gen_tok_s=%.2f\n",
+           impl, model_name, num_reqs, steps, fwd_tokens, gen_tokens, elapsed,
+           fwd_tokens / elapsed, gen_tokens / elapsed);
+}
+
 /*
  * Runs every request in `input_path` and reports throughput.
  *   fwd_tokens: number of forward() calls (prompt tokens + generated tokens) = work done
@@ -104,6 +117,7 @@ static void free_requests(Requests *r) {
  * A request stops at BOS(1)/EOS(2) or after `steps` positions.
  * Timing covers only the request loop (model loading is excluded).
  */
+#ifndef HARNESS_NO_RUN_TEST
 static void run_test(Transformer *transformer, Tokenizer *tokenizer, const char *impl,
                      const char *model_path, const char *input_path, const char *output_path,
                      int steps, float temperature, float topp, unsigned long long seed) {
@@ -144,13 +158,9 @@ static void run_test(Transformer *transformer, Tokenizer *tokenizer, const char 
     double elapsed = harness_now() - t0;
 
     write_outputs(output_path, &reqs);
-    const char *model_name = strrchr(model_path, '/');
-    model_name = model_name ? model_name + 1 : model_path;
-    printf("RESULT impl=%s model=%s reqs=%d steps=%d fwd_tokens=%ld gen_tokens=%ld "
-           "elapsed_s=%.3f fwd_tok_s=%.2f gen_tok_s=%.2f\n",
-           impl, model_name, reqs.num_reqs, steps, fwd_tokens, gen_tokens, elapsed,
-           fwd_tokens / elapsed, gen_tokens / elapsed);
+    print_result(impl, model_path, reqs.num_reqs, steps, fwd_tokens, gen_tokens, elapsed);
     free_requests(&reqs);
 }
+#endif  // HARNESS_NO_RUN_TEST
 
 #endif  // HARNESS_H

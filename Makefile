@@ -3,7 +3,8 @@ CC        := gcc
 NVCC      ?= nvcc
 # RTX 50xx; e.g. `make ARCH=sm_86` for RTX 30xx
 ARCH      ?= sm_120
-NVCCFLAGS := -O3 -std=c++17 -arch=$(ARCH) -lineinfo
+NVCCFLAGS := -O3 -std=c++17 -arch=$(ARCH) -lineinfo -Xcompiler -fopenmp
+NVCCLIBS  := -lgomp
 
 # Directories
 SRC_DIR   := kernels
@@ -16,8 +17,10 @@ HEADERS    := $(wildcard $(SRC_DIR)/*.h) harness.h
 OBJ_FILES  := $(patsubst $(SRC_DIR)/%.cu,$(BUILD_DIR)/%.o,$(SRC_FILES))
 
 # Executables
-# GPU (run.cu)
+# GPU, data parallel + continuous batching (run.cu)
 EXEC        := bin/runcu
+# GPU, layers split over the GPUs + micro-batches (run_pp.cu)
+PP_EXEC     := bin/runpp
 # GPU kernels vs CPU reference (unittests.cu)
 UNIT_TESTS  := bin/unit-tests
 # CPU llama2.c, generate/chat (run.c)
@@ -28,6 +31,8 @@ CPU_TEST    := bin/runtest
 CPU_TEST_MP := bin/runtest_omp
 
 # Workload for the test-*/cpu-*/check-diff targets
+# batch size per GPU (run.cu) / micro-batch size (run_pp.cu), 1..10
+BATCH       ?= 10
 INPUT       ?= input/12.txt
 STEPS       ?= 256
 # fastest OpenMP setting on the i5-14400 (see README)
@@ -35,7 +40,7 @@ NUM_THREADS ?= 6
 TAG         := $(basename $(notdir $(INPUT)))
 
 # Default target
-all: $(EXEC) $(UNIT_TESTS) $(CPU_EXEC) $(CPU_TEST) $(CPU_TEST_MP)
+all: $(EXEC) $(PP_EXEC) $(UNIT_TESTS) $(CPU_EXEC) $(CPU_TEST) $(CPU_TEST_MP)
 
 # Rule to compile kernel sources into object files
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cu $(HEADERS)
@@ -44,11 +49,15 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cu $(HEADERS)
 
 $(EXEC): run.cu $(OBJ_FILES) $(HEADERS)
 	@mkdir -p bin
-	$(NVCC) $(NVCCFLAGS) run.cu $(OBJ_FILES) -o $@
+	$(NVCC) $(NVCCFLAGS) run.cu $(OBJ_FILES) $(NVCCLIBS) -o $@
+
+$(PP_EXEC): run_pp.cu $(OBJ_FILES) $(HEADERS)
+	@mkdir -p bin
+	$(NVCC) $(NVCCFLAGS) run_pp.cu $(OBJ_FILES) $(NVCCLIBS) -o $@
 
 $(UNIT_TESTS): unittests.cu run.cu $(OBJ_FILES) $(HEADERS)
 	@mkdir -p bin
-	$(NVCC) $(NVCCFLAGS) unittests.cu $(OBJ_FILES) -o $@
+	$(NVCC) $(NVCCFLAGS) unittests.cu $(OBJ_FILES) $(NVCCLIBS) -o $@
 
 $(CPU_EXEC): run.c
 	@mkdir -p bin
@@ -76,7 +85,12 @@ bench-kernels: $(UNIT_TESTS)
 # GPU test mode, greedy, e.g. `make test-110M` -> output/110M_12_gpu.txt
 test-%: $(EXEC)
 	@mkdir -p output
-	./$(EXEC) $(MODEL_DIR)/stories$*.bin -m test -f $(INPUT) -o output/$*_$(TAG)_gpu.txt -n $(STEPS) -t 0
+	./$(EXEC) $(MODEL_DIR)/stories$*.bin -m test -f $(INPUT) -o output/$*_$(TAG)_gpu.txt -n $(STEPS) -t 0 -b $(BATCH)
+
+# pipeline version, greedy, e.g. `make test-pp-110M` -> output/110M_12_gpu_pp.txt
+test-pp-%: $(PP_EXEC)
+	@mkdir -p output
+	./$(PP_EXEC) $(MODEL_DIR)/stories$*.bin -m test -f $(INPUT) -o output/$*_$(TAG)_gpu_pp.txt -n $(STEPS) -t 0 -b $(BATCH)
 
 # CPU reference, greedy, e.g. `make cpu-110M` -> output/110M_12.txt
 cpu-%: $(CPU_TEST)
@@ -89,22 +103,12 @@ cpu-omp-%: $(CPU_TEST_MP)
 	OMP_NUM_THREADS=$(NUM_THREADS) ./$(CPU_TEST_MP) $(MODEL_DIR)/stories$*.bin -f $(INPUT) -o output/$*_$(TAG)_omp.txt -n $(STEPS) -t 0
 
 # GPU greedy output must equal the committed CPU reference output
-check-diff: test-15M test-42M test-110M
-	diff output/15M_$(TAG)_gpu.txt output/15M_$(TAG).txt && \
-	diff output/42M_$(TAG)_gpu.txt output/42M_$(TAG).txt && \
-	diff output/110M_$(TAG)_gpu.txt output/110M_$(TAG).txt && \
-	echo "Done: GPU output == CPU output"
-
-# per-kernel-group GPU time breakdown
-profile-%: $(EXEC)
-	@mkdir -p profiling output
-	LLAMA_PROFILE=1 ./$(EXEC) $(MODEL_DIR)/stories$*.bin -m test -f $(INPUT) -o output/$*_$(TAG)_prof.txt -n $(STEPS) \
-	  > profiling/profile_$*_$(TAG)_$(shell hostname).md
-	cat profiling/profile_$*_$(TAG)_$(shell hostname).md
+check-diff: test-15M test-42M test-110M test-pp-15M test-pp-42M test-pp-110M
+	./check_diff.sh $(TAG)
 
 # end-to-end CPU vs GPU throughput + greedy output check -> profiling/
 bench: all
-	NUM_THREADS=$(NUM_THREADS) INPUT=$(INPUT) STEPS=$(STEPS) ./bench.sh
+	NUM_THREADS=$(NUM_THREADS) INPUT=$(INPUT) STEPS=$(STEPS) BATCH=$(BATCH) ./bench.sh
 
 download-models:
 	@mkdir -p $(MODEL_DIR)

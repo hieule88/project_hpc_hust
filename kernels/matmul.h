@@ -1,4 +1,12 @@
-#pragma once
-// W (d,n) @ x (n,) -> xout (d,)
-void matmul_gpu_v1(float *xout, const float *x, const float *w, int n, int d);
-void matmul_cpu(float *xout, const float *x, const float *w, int n, int d);
+#include <cuda_runtime.h>
+
+#include "types.h"
+
+void matmul_gpu_v1(float *xout, float *x, float *w, int n, int d, int batch_size, cudaStream_t stream = 0);
+void matmul_gpu_v2(float *xout, float *x, float *w, int n, int d, int batch_size, cudaStream_t stream = 0);
+void matmul_gpu_v3(float *xout, float *x, float *w, int n, int d,
+                   Config *p, int *p_pos, int kv_dim, int loff, size_t kv_cache_off, int batch_size, cudaStream_t stream = 0);
+void matmul_gpu_v4(float *xout_k, float *xout_v, float *x, float *w_k, float *w_v, int n, int d,
+                   Config *p, int *p_pos, int kv_dim, int loff, size_t kv_cache_off, int batch_size, cudaStream_t stream = 0);
+
+void matmul_cpu(float *xout, float *x, float *w, int n, int d, int batch_size);
