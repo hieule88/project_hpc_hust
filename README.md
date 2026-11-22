@@ -1,11 +1,11 @@
 # Llama-2 inference: CPU vs GPU naive (vs GPU optimized sau này)
 
-Repo này chứa bản CPU gốc (llama2.c), một bản **GPU naive** chuyển trực tiếp từ code CPU sang CUDA, và bộ test/benchmark dùng chung để so sánh với bản **GPU optimized** sau này.
+Repo này có cấu trúc giống `llama2.hip-master`: code GPU (`run.cu`, `kernels/`, `unittests.cu`) nằm ở thư mục gốc cùng code CPU llama2.c (`run.c`). Bản GPU hiện tại là **bản naive**, chuyển trực tiếp từ `run.c` sang CUDA; bản optimized sau này sẽ thay dần các kernel trong `kernels/` (`matmul_gpu_v1` → `v2`, …) và giữ nguyên giao diện chạy, test, benchmark.
 
 **Kết luận chính (RTX 5060 Ti, i5-14400, 12 prompt, 256 bước):**
-- **Độ chính xác:** GPU naive cho output **giống hệt** CPU ở cả 3 model (36/36 request, giải mã greedy).
+- **Độ chính xác:** GPU naive cho output **giống hệt** CPU ở cả 3 model (`make check-diff`, giải mã greedy).
 - **So với CPU 1 luồng:** GPU naive nhanh hơn **2.6× đến 4.9×**.
-- **So với CPU 6 luồng:** GPU naive chỉ ngang ngửa (**0.66× đến 1.18×**).
+- **So với CPU 6 luồng:** GPU naive chỉ ngang ngửa (**0.67× đến 1.17×**).
 - **Nút thắt:** nhân ma trận chiếm 95% thời gian GPU. Kernel matmul naive chỉ dùng được 6–30% băng thông bộ nhớ của GPU, nên đây là chỗ cần tối ưu đầu tiên.
 
 ## 1. Thuật ngữ
@@ -15,37 +15,39 @@ Repo này chứa bản CPU gốc (llama2.c), một bản **GPU naive** chuyển 
 | request | 1 prompt trong file input; chương trình sinh tiếp văn bản cho prompt đó |
 | forward pass | 1 lần chạy model cho 1 token (prompt hoặc token sinh ra) |
 | tok/s | số forward pass mỗi giây, cộng chung cho mọi request, không tính thời gian nạp model |
-| cpu_1t | `cpu/runtest`: `-O3 -march=native`, 1 luồng, không fast-math; dùng làm chuẩn số học |
-| cpu_omp | `cpu/runtest_omp`: `-Ofast -fopenmp -march=native`, 6 luồng; cấu hình CPU nhanh nhất |
-| gpu_naive | `gpu_naive/bin/runcu`: bản CUDA naive trong repo này |
+| cpu_1t | `bin/runtest`: `-O3 -march=native`, 1 luồng, không fast-math; dùng làm chuẩn số học |
+| cpu_omp | `bin/runtest_omp`: `-Ofast -fopenmp -march=native`, 6 luồng; cấu hình CPU nhanh nhất |
+| gpu_naive | `bin/runcu`: bản CUDA naive (`run.cu` + `kernels/`) |
 
-## 2. Cấu trúc repo
+## 2. Cấu trúc repo (giống llama2.hip-master)
 
-```
-cpu/            llama2.c gốc, run.c KHÔNG sửa; thêm runtest.c (chế độ test) + target `make runtest`
-gpu_naive/      bản CUDA naive, cấu trúc giống llama2.hip-master
-  run.cu          nạp model lên GPU, forward(), tokenizer, sampler, mode generate|chat|test
-  kernels/        mỗi phép toán 1 file: bản GPU naive + bản CPU tham chiếu (chép từ run.c)
-    matmul  rmsnorm  softmax  rope  attn  swiglu  skip_conn  (+ types.h, utils.h)
-  unittests.cu    unit test kernel, test forward so với CPU, benchmark từng kernel
-  input/          file prompt (dòng đầu = số request)
-  Makefile
-common/harness.h  vòng lặp chế độ test dùng chung cho mọi bản -> số liệu so sánh được
-bench/bench.sh    benchmark end-to-end + kiểm tra output, ghi bench/results/
-models/           checkpoint (không commit), tải bằng models/download.sh
-```
+| File / thư mục | Vai trò | Tương ứng trong llama2.hip-master |
+|---|---|---|
+| `run.cu` | GPU: nạp model, `forward()`, tokenizer, sampler, mode `generate` / `chat` / `test` | `run.cc` |
+| `kernels/*.cu, *.h` | Mỗi phép toán 1 file: bản GPU + bản CPU tham chiếu (chép từ `run.c`): `matmul`, `rmsnorm`, `softmax`, `rope`, `attn`, `swiglu`, `skip_conn`, `types.h`, `utils.h` | `kernels/*.cc, *.h` |
+| `unittests.cu` | Test từng kernel, test forward so với CPU, benchmark từng kernel | `unittests.cc` |
+| `Makefile` | build, `unit-tests`, `test-110M`, `check-diff`, `profile-110M`, `bench` | `Makefile` |
+| `input/` | File prompt (dòng đầu = số request), giống hệt hip-master | `input/` |
+| `output/` | Output tham chiếu cho `check-diff`: `110M_12.txt` (CPU), `110M_12_gpu.txt` (GPU) | `output/` |
+| `profiling/` | Kết quả đo: unit test, từng kernel, profile, benchmark end-to-end | `profiling/` (hip-master không commit) |
+| `run.c` | CPU llama2.c gốc, **không sửa** | — |
+| `runtest.c`, `harness.h` | Chế độ test cho CPU; `harness.h` là vòng lặp test dùng chung cho CPU và GPU nên số liệu so sánh được | phần `test()` trong `run.cc` |
+| `bench.sh` | Benchmark end-to-end CPU vs GPU + kiểm tra output | target `test-*` trong Makefile |
+| `model/` | Checkpoint, không commit; tải bằng `make download-models` | `model/` (trong `.gitignore`) |
+| `*.py`, `test.c`, `test_all.py`, `win.c`, `tokenizer.*` | File gốc của llama2.c | như nhau |
 
 ## 3. "Naive" ở đây nghĩa là gì
 
 Mỗi bước trong `forward()` của `run.c` được chuyển thành kernel đơn giản nhất chạy đúng:
 
-| Phép toán | Cách chia thread |
-|---|---|
-| matmul (GEMV) | 1 thread tính 1 hàng output, lặp qua cả hàng như code CPU |
-| rmsnorm | 1 block cho cả vector, cộng dồn bằng cây rút gọn trong shared memory |
-| attention | 3 kernel: score (1 thread / (head, t)), softmax (1 block / head), tổng có trọng số (1 thread / (head, i)) |
-| rope, swiglu, residual | 1 thread / phần tử |
-| sampling | trên CPU sau khi chép logits về, giống `run.c` |
+| Phép toán | Hàm | Cách chia thread |
+|---|---|---|
+| matmul (GEMV) | `matmul_gpu_v1` | 1 thread tính 1 hàng output, lặp qua cả hàng như code CPU |
+| rmsnorm | `rmsnorm_gpu` | 1 block cho cả vector, cộng dồn bằng cây rút gọn trong shared memory |
+| attention | `multihead_attention_gpu` | 3 kernel: score (1 thread / (head, t)), softmax (1 block / head), tổng có trọng số (1 thread / (head, i)) |
+| rope | `rotary_embedding_gpu` | 1 thread / cặp phần tử |
+| swiglu, residual | `swiglu_gpu`, `skip_conn_gpu` | 1 thread / phần tử |
+| sampling | `sample` (CPU) | trên CPU sau khi chép logits về, giống `run.c` |
 
 Không có: batching, gộp kernel, đọc vector (`float4`), warp shuffle, tiling shared memory, FP16. Mỗi token tốn 16 lần khởi chạy kernel cho mỗi layer.
 
@@ -54,27 +56,28 @@ Không có: batching, gộp kernel, đọc vector (`float4`), warp shuffle, tili
 Yêu cầu: `gcc`, CUDA Toolkit có `nvcc` (máy này: CUDA 12.9 trong conda env `cuda129`), GPU NVIDIA. Mặc định build cho `sm_120` (RTX 50xx); GPU khác thì thêm `ARCH=sm_86` (hoặc tương ứng).
 
 ```bash
-models/download.sh                          # stories15M / 42M / 110M
 source ~/miniconda3/bin/activate cuda129    # để có nvcc
+make download-models                        # model/stories{15M,42M,110M}.bin
+make                                        # bin/runcu, bin/unit-tests, bin/runc, bin/runtest, bin/runtest_omp
 
-cd gpu_naive
-make                                        # bin/runcu, bin/unittests
-make test                                   # unit test + forward test (stories110M)
+make unit-tests                             # 43 test kernel + test forward (stories110M)
+make check-diff                             # output greedy của GPU == output CPU trong output/
+make test-110M                              # GPU, input/12.txt -> output/110M_12_gpu.txt
+make cpu-110M                               # CPU 1 luồng -> output/110M_12.txt
+make cpu-omp-110M NUM_THREADS=6             # CPU OpenMP
+make profile-110M                           # thời gian GPU theo nhóm kernel -> profiling/
 make bench-kernels                          # thời gian từng kernel
-./bin/runcu ../models/stories110M.bin -i "Once upon a time" -n 256          # như run.c
-./bin/runcu ../models/stories110M.bin -m test -f input/12.txt -o output/out.txt
-LLAMA_PROFILE=1 ./bin/runcu ...             # thêm bảng thời gian theo nhóm kernel
+make bench                                  # CPU vs GPU end-to-end -> profiling/bench_<host>.{csv,md}
+make test-110M INPUT=input/32.txt STEPS=128 # đổi workload
 
-cd ..
-bench/bench.sh                              # CPU vs GPU, ghi bench/results/<host>.{csv,md}
-MODELS=stories110M STEPS=128 INPUT=gpu_naive/input/32.txt CPU_THREADS=6 bench/bench.sh
+./bin/runcu model/stories110M.bin -i "Once upon a time" -n 256    # sinh văn bản như run.c
 ```
 
-Chế độ test (`cpu/runtest`, `runcu -m test`): chạy lần lượt từng request; mỗi request dùng sampler mới với seed 314028 (temperature 1.0, top-p 0.9 nếu không đổi bằng `-t`/`-p`), dừng ở BOS/EOS hoặc sau `-n` vị trí. Output ghi mỗi request một dòng; in ra dòng `RESULT impl=... fwd_tok_s=... gen_tok_s=...`.
+Chế độ test (`bin/runtest`, `bin/runcu -m test`): chạy lần lượt từng request; mỗi request dùng sampler mới với seed 314028, dừng ở BOS/EOS hoặc sau `-n` vị trí. Các target `test-*`, `cpu-*` dùng greedy (`-t 0`) để output so sánh được; `bench.sh` đo tốc độ với temperature 1.0, top-p 0.9. Output ghi mỗi request một dòng; chương trình in dòng `RESULT impl=... fwd_tok_s=... gen_tok_s=...`.
 
 ## 5. Kết quả trên máy dev
 
-Máy: Intel Core i5-14400 (6 P-core + 4 E-core, RAM DDR4), NVIDIA RTX 5060 Ti 16 GB (36 SM, 448 GB/s theo thông số), driver 595.99, CUDA 12.9. File gốc: [bench/results/](bench/results/).
+Máy: Intel Core i5-14400 (6 P-core + 4 E-core, RAM DDR4), NVIDIA RTX 5060 Ti 16 GB (36 SM, 448 GB/s theo thông số), driver 595.99, CUDA 12.9. File gốc trong [profiling/](profiling/).
 
 ### 5.1 Unit test: 44/44 pass
 
@@ -82,25 +85,25 @@ Máy: Intel Core i5-14400 (6 P-core + 4 E-core, RAM DDR4), NVIDIA RTX 5060 Ti 16
 - **1 test forward:** chạy toàn bộ model stories110M trên GPU và CPU qua 48 vị trí. Logits lệch tối đa **2.0e-5** (tương đối 1.6e-6 so với logit lớn nhất), token argmax trùng **48/48**.
 - **Test có bắt được lỗi không:** đã kiểm tra bằng cách cố ý cài lỗi chỉ số GQA vào kernel attention; test GQA báo FAIL như mong đợi.
 
-Chi tiết: [bench/results/unittests_vmo-B760M-DS3H-DDR4.txt](bench/results/unittests_vmo-B760M-DS3H-DDR4.txt).
+Chi tiết: [profiling/unittests_vmo-B760M-DS3H-DDR4.txt](profiling/unittests_vmo-B760M-DS3H-DDR4.txt).
 
 ### 5.2 End-to-end: GPU naive chỉ thắng CPU đa luồng ở model lớn nhất
 
-Mỗi số là 1 lần chạy với `input/12.txt`, 256 bước, khoảng 2400–2800 forward pass mỗi lần:
+Mỗi số là 1 lần chạy với `input/12.txt`, 256 bước, khoảng 2400–2800 forward pass mỗi lần (`make bench`). Chạy lại lần 2 thì mọi ô lệch không quá 1.6% so với lần 1.
 
 | model | cpu_1t tok/s | cpu_omp (6t) tok/s | gpu_naive tok/s | gpu_naive / cpu_1t | gpu_naive / cpu_omp |
 |---|---|---|---|---|---|
-| stories15M | 176.8 | 692.2 | 457.6 | 2.59× | 0.66× |
-| stories42M | 59.2 | 246.6 | 221.9 | 3.75× | 0.90× |
-| stories110M | 22.4 | 92.2 | 108.8 | 4.87× | 1.18× |
+| stories15M | 176.6 | 681.0 | 457.6 | 2.59× | 0.67× |
+| stories42M | 59.3 | 245.2 | 222.0 | 3.74× | 0.91× |
+| stories110M | 22.2 | 92.5 | 108.6 | 4.89× | 1.17× |
 
-Giải mã greedy (`-t 0`): output của `cpu_omp` và `gpu_naive` **giống hệt** `cpu_1t` ở 12/12 request cho mọi model.
+Giải mã greedy (`-t 0`): output của `cpu_omp` và `gpu_naive` **giống hệt** `cpu_1t` ở 12/12 request cho mọi model. File: [profiling/bench_vmo-B760M-DS3H-DDR4.md](profiling/bench_vmo-B760M-DS3H-DDR4.md).
 
 Chọn 6 luồng cho `cpu_omp` vì nhanh nhất khi thử trên stories110M (3 prompt, 128 bước, 1 lần chạy mỗi mức): 4t = 91.7, 6t = 95.0, 10t = 85.2, 12t = 87.2, 16t = 88.1 tok/s.
 
 ### 5.3 Thời gian GPU của stories110M: matmul chiếm 95%
 
-Đo bằng `LLAMA_PROFILE=1`, `input/12.txt`, 2652 forward pass. Profile đồng bộ GPU sau mỗi nhóm kernel nên chạy chậm hơn bản thường khoảng 11% (97 so với 109 tok/s).
+Đo bằng `make profile-110M` (`input/12.txt`, 2652 forward pass). Profile đồng bộ GPU sau mỗi nhóm kernel nên chạy chậm hơn bản thường khoảng 11% (97 so với 109 tok/s).
 
 | nhóm kernel | µs / token | % |
 |---|---|---|
@@ -115,7 +118,7 @@ Chọn 6 luồng cho `cpu_omp` vì nhanh nhất khi thử trên stories110M (3 p
 
 ### 5.4 Matmul naive dùng rất ít băng thông
 
-Đo từng kernel ở kích thước stories110M, trung bình 200 lần chạy:
+Đo bằng `make bench-kernels` ở kích thước stories110M, trung bình 200 lần chạy:
 
 | kernel | GPU µs | băng thông đạt được |
 |---|---|---|
@@ -128,16 +131,17 @@ Hai lý do, xếp theo mức ảnh hưởng:
 1. **Quá ít thread:** với `d = 768`, cả GPU 36 SM chỉ có 3 block × 256 thread chạy.
 2. **Đọc không gộp được:** các thread cạnh nhau đọc các hàng khác nhau của W (cách nhau `n` phần tử).
 
-Ma trận classifier có `d = 32000` hàng nên có đủ thread, vì vậy đạt băng thông cao nhất. Bảng đầy đủ cho cả 3 model: [bench/results/kernels_vmo-B760M-DS3H-DDR4.md](bench/results/kernels_vmo-B760M-DS3H-DDR4.md).
+Ma trận classifier có `d = 32000` hàng nên có đủ thread, vì vậy đạt băng thông cao nhất. Bảng đầy đủ cho cả 3 model: [profiling/kernels_vmo-B760M-DS3H-DDR4.md](profiling/kernels_vmo-B760M-DS3H-DDR4.md).
 
 ## 6. Hướng tối ưu cho bản GPU optimized
 
 Xếp theo mức đóng góp dự kiến, dựa trên profile ở mục 5.3:
-1. **Matmul:** mỗi warp tính 1 hàng, đọc `float4`, rút gọn bằng warp shuffle, để có đủ thread và đọc được gộp (xem `llama2.hip-master`, `cullama`).
-2. **Batching nhiều request (continuous batching):** đọc trọng số 1 lần cho cả B request.
+1. **Matmul** (`matmul_gpu_v2`): mỗi warp tính 1 hàng, đọc `float4`, rút gọn bằng warp shuffle, để có đủ thread và đọc được gộp (như `batch_mat_vec_kernel` của hip-master).
+2. **Batching nhiều request (continuous batching):** đọc trọng số 1 lần cho cả B request (như `test()` trong `run.cc` của hip-master).
 3. **FP16 trọng số và KV cache:** giảm một nửa lượng bộ nhớ phải đọc.
 4. **Gộp kernel:** K+V, W1+W3+SwiGLU, matmul+residual, RoPE+attention; giảm 16 lần khởi chạy kernel mỗi layer.
 
-Để so sánh được với số liệu ở trên, bản optimized cần:
-- **Giao diện:** nhận `<model> -m test -f <input> -o <output> -n <steps> -t <temp> -z <tokenizer>` và in dòng `RESULT` giống `common/harness.h`.
-- **Đăng ký vào bench:** thêm một dòng vào mảng `IMPLS` trong `bench/bench.sh`.
+Giữ nguyên khi tối ưu để còn so sánh được với số liệu ở trên:
+- **Giao diện test mode:** `bin/runcu <model> -m test -f <input> -o <output> -n <steps> -t <temp>`, in dòng `RESULT` như `harness.h`.
+- **Kiểm tra đúng sai:** `make unit-tests` (thêm test cho kernel mới, so với bản `*_cpu`) và `make check-diff`.
+- **Benchmark:** nếu muốn giữ bản naive làm mốc, thêm binary mới vào mảng `IMPLS` trong `bench.sh`.

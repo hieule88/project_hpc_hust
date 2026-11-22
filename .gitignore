@@ -1,13 +1,9 @@
-# model checkpoints: download with models/download.sh
-models/*.bin
-
-# build outputs
-gpu_naive/bin/
-gpu_naive/build/
-gpu_naive/output/
-cpu/run
-cpu/runq
-cpu/runtest
-cpu/runtest_omp
-cpu/testc
+.vscode/
+model/*
+bin/*
+build/*
+# generated outputs; the committed *_12.txt / *_12_gpu.txt files are references for check-diff
+output/*_prof.txt
+output/*_omp.txt
 __pycache__/
+*.o
