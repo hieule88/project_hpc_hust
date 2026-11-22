@@ -1,0 +1,54 @@
+GPU: NVIDIA GeForce RTX 5060 Ti (36 SMs)
+
+== kernel tests (GPU vs CPU reference) ==
+  [PASS] matmul n=1 d=1                                 max|diff|=0.00e+00  max|ref|=9.27e-01
+  [PASS] matmul n=13 d=7                                max|diff|=2.38e-07  max|ref|=2.55e+00
+  [PASS] matmul n=257 d=1000                            max|diff|=3.81e-06  max|ref|=1.56e+01
+  [PASS] matmul n=768 d=768                             max|diff|=7.63e-06  max|ref|=3.03e+01
+  [PASS] matmul n=768 d=2048                            max|diff|=7.63e-06  max|ref|=3.42e+01
+  [PASS] matmul n=2048 d=768                            max|diff|=1.91e-05  max|ref|=4.97e+01
+  [PASS] matmul n=768 d=32000                           max|diff|=1.14e-05  max|ref|=4.07e+01
+  [PASS] matmul n=4096 d=4096                           max|diff|=3.05e-05  max|ref|=8.02e+01
+  [PASS] rmsnorm size=1                                 max|diff|=0.00e+00  max|ref|=7.01e-01
+  [PASS] rmsnorm size=7                                 max|diff|=0.00e+00  max|ref|=1.13e+00
+  [PASS] rmsnorm size=257                               max|diff|=0.00e+00  max|ref|=1.61e+00
+  [PASS] rmsnorm size=768                               max|diff|=2.38e-07  max|ref|=1.63e+00
+  [PASS] rmsnorm size=4096                              max|diff|=9.54e-07  max|ref|=1.67e+00
+  [PASS] rmsnorm size=768 (in place)                    max|diff|=7.15e-07  max|ref|=1.63e+00
+  [PASS] softmax rows=1 size=1 stride=1                 max|diff|=0.00e+00  max|ref|=1.00e+00
+  [PASS] softmax rows=1 size=7 stride=7                 max|diff|=7.45e-09  max|ref|=8.01e-01
+  [PASS] softmax rows=1 size=1000 stride=1000           max|diff|=2.05e-08  max|ref|=1.79e-02
+  [PASS] softmax rows=1 size=32000 stride=32000         max|diff|=1.51e-08  max|ref|=6.31e-04
+  [PASS] softmax rows=12 size=300 stride=1024           max|diff|=4.47e-08  max|ref|=1.00e+01
+  [PASS] rope dim=768 kv_dim=768 pos=0 (q)              max|diff|=0.00e+00  max|ref|=9.98e-01
+  [PASS] rope dim=768 kv_dim=768 pos=0 (k)              max|diff|=0.00e+00  max|ref|=9.99e-01
+  [PASS] rope dim=768 kv_dim=768 pos=1 (q)              max|diff|=1.19e-07  max|ref|=1.34e+00
+  [PASS] rope dim=768 kv_dim=768 pos=1 (k)              max|diff|=1.19e-07  max|ref|=1.26e+00
+  [PASS] rope dim=768 kv_dim=768 pos=255 (q)            max|diff|=1.01e-06  max|ref|=1.27e+00
+  [PASS] rope dim=768 kv_dim=768 pos=255 (k)            max|diff|=9.83e-07  max|ref|=1.27e+00
+  [PASS] rope dim=768 kv_dim=768 pos=1023 (q)           max|diff|=4.46e-06  max|ref|=1.32e+00
+  [PASS] rope dim=768 kv_dim=768 pos=1023 (k)           max|diff|=4.37e-06  max|ref|=1.30e+00
+  [PASS] rope dim=768 kv_dim=256 pos=77 (q)             max|diff|=2.98e-07  max|ref|=1.26e+00
+  [PASS] rope dim=768 kv_dim=256 pos=77 (k)             max|diff|=2.38e-07  max|ref|=1.29e+00
+  [PASS] attention heads=12 kv_heads=12 hs=64 pos=0     max|diff|=0.00e+00  max|ref|=9.96e-01
+  [PASS] attention heads=12 kv_heads=12 hs=64 pos=1     max|diff|=8.94e-08  max|ref|=9.34e-01
+  [PASS] attention heads=12 kv_heads=12 hs=64 pos=100   max|diff|=1.19e-07  max|ref|=1.64e-01
+  [PASS] attention heads=12 kv_heads=12 hs=64 pos=1023  max|diff|=6.71e-08  max|ref|=6.04e-02
+  [PASS] attention heads=12 kv_heads=4 hs=64 pos=500    max|diff|=6.71e-08  max|ref|=1.01e-01
+  [PASS] attention heads=6 kv_heads=6 hs=48 pos=255     max|diff|=7.45e-08  max|ref|=1.17e-01
+  [PASS] swiglu size=1                                  max|diff|=0.00e+00  max|ref|=4.65e-01
+  [PASS] swiglu size=257                                max|diff|=2.98e-08  max|ref|=4.46e+00
+  [PASS] swiglu size=2048                               max|diff|=4.77e-07  max|ref|=4.95e+00
+  [PASS] swiglu size=11008                              max|diff|=4.77e-07  max|ref|=4.88e+00
+  [PASS] residual_add size=1                            max|diff|=0.00e+00  max|ref|=1.95e-01
+  [PASS] residual_add size=257                          max|diff|=0.00e+00  max|ref|=1.88e+00
+  [PASS] residual_add size=768                          max|diff|=0.00e+00  max|ref|=1.91e+00
+  [PASS] residual_add size=4096                         max|diff|=0.00e+00  max|ref|=1.98e+00
+
+== forward test (GPU forward vs CPU forward, 48 positions) ==
+  model: dim=768 hidden=2048 layers=12 heads=12 kv_heads=12 vocab=32000 seq_len=1024
+  worst max|diff| over positions = 2.00e-05 (relative to max|logit|: 1.56e-06)
+  argmax token equal at 48 / 48 positions
+  [PASS] forward logits within atol=1e-3, rtol=1e-3 at every position
+
+44 passed, 0 failed

@@ -1,0 +1,10 @@
+impl,model,reqs,steps,fwd_tokens,gen_tokens,elapsed_s,fwd_tok_s,gen_tok_s
+cpu_1t,stories15M,12,256,2410,2246,13.635,176.75,164.73
+cpu_omp,stories15M,12,256,2486,2322,3.592,692.19,646.53
+gpu_naive,stories15M,12,256,2410,2246,5.266,457.62,426.48
+cpu_1t,stories42M,12,256,2823,2659,47.681,59.21,55.77
+cpu_omp,stories42M,12,256,2747,2583,11.142,246.55,231.83
+gpu_naive,stories42M,12,256,2816,2652,12.691,221.89,208.97
+cpu_1t,stories110M,12,256,2652,2488,118.664,22.35,20.97
+cpu_omp,stories110M,12,256,2625,2461,28.485,92.15,86.40
+gpu_naive,stories110M,12,256,2652,2488,24.379,108.78,102.05

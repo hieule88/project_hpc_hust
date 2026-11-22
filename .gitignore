@@ -1,0 +1,13 @@
+# model checkpoints: download with models/download.sh
+models/*.bin
+
+# build outputs
+gpu_naive/bin/
+gpu_naive/build/
+gpu_naive/output/
+cpu/run
+cpu/runq
+cpu/runtest
+cpu/runtest_omp
+cpu/testc
+__pycache__/
