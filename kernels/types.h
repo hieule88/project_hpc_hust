@@ -2,7 +2,7 @@
 
 // Upper bound for the batch size: the batched GEMV kernels keep one partial sum per
 // request in registers (float sum[MAX_BATCH_SIZE]). run.cu / run_pp.cu reject larger -b.
-#define MAX_BATCH_SIZE 10
+#define MAX_BATCH_SIZE 16
 #include <stdio.h>
 #include <unistd.h>
 

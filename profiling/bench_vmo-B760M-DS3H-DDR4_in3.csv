@@ -1,0 +1,6 @@
+impl,model,reqs,steps,fwd_tokens,gen_tokens,elapsed_s,fwd_tok_s,gen_tok_s
+cpu_1t,sheared1.3B,3,64,192,147,110.539,1.74,1.33
+cpu_omp,sheared1.3B,3,64,192,147,24.626,7.80,5.97
+gpu_naive,sheared1.3B,3,64,192,147,8.760,21.92,16.78
+gpu_optim_b1,sheared1.3B,3,64,192,147,2.602,73.80,56.50
+gpu_optim_b3,sheared1.3B,3,64,192,147,0.926,207.45,158.83

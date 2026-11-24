@@ -21,6 +21,8 @@ OBJ_FILES  := $(patsubst $(SRC_DIR)/%.cu,$(BUILD_DIR)/%.o,$(SRC_FILES))
 EXEC        := bin/runcu
 # GPU, layers split over the GPUs + micro-batches (run_pp.cu)
 PP_EXEC     := bin/runpp
+# GPU, run.cu + PagedAttention with vLLM-style preemption (run_pgattn.cu)
+PG_EXEC     := bin/runpgattn
 # GPU kernels vs CPU reference (unittests.cu)
 UNIT_TESTS  := bin/unit-tests
 # CPU llama2.c, generate/chat (run.c)
@@ -40,7 +42,7 @@ NUM_THREADS ?= 6
 TAG         := $(basename $(notdir $(INPUT)))
 
 # Default target
-all: $(EXEC) $(PP_EXEC) $(UNIT_TESTS) $(CPU_EXEC) $(CPU_TEST) $(CPU_TEST_MP)
+all: $(EXEC) $(PP_EXEC) $(PG_EXEC) $(UNIT_TESTS) $(CPU_EXEC) $(CPU_TEST) $(CPU_TEST_MP)
 
 # Rule to compile kernel sources into object files
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cu $(HEADERS)
@@ -54,6 +56,10 @@ $(EXEC): run.cu $(OBJ_FILES) $(HEADERS)
 $(PP_EXEC): run_pp.cu $(OBJ_FILES) $(HEADERS)
 	@mkdir -p bin
 	$(NVCC) $(NVCCFLAGS) run_pp.cu $(OBJ_FILES) $(NVCCLIBS) -o $@
+
+$(PG_EXEC): run_pgattn.cu $(OBJ_FILES) $(HEADERS)
+	@mkdir -p bin
+	$(NVCC) $(NVCCFLAGS) run_pgattn.cu $(OBJ_FILES) $(NVCCLIBS) -o $@
 
 $(UNIT_TESTS): unittests.cu run.cu $(OBJ_FILES) $(HEADERS)
 	@mkdir -p bin

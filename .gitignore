@@ -8,3 +8,5 @@ output/*_omp.txt
 __pycache__/
 *.o
 .naive/
+.venv/
+hf/

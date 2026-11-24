@@ -224,7 +224,6 @@ void forward(Transformer *transformer, HandlingReq *handling_reqs, RunState *bat
     int hidden_dim = p->hidden_dim;
     int head_size = dim / p->n_heads;
 
-    // #pragma omp parallel for num_threads(batch_size)
     for (int i = 0; i < batch_size; ++i) {
         h_pos[i] = handling_reqs[i].pos;
         if (handling_reqs[i].is_done) {
@@ -790,8 +789,10 @@ void test(Transformer *transformer, Tokenizer *tokenizer, const char *model_path
             for (int i = 0; i < BATCH_SIZE; ++i) {
                 if (!slots[i].is_done) continue;
                 int req_id;
-#pragma omp critical(queue)
+                
+                #pragma omp critical(queue)
                 req_id = next_req < num_reqs ? next_req++ : -1;
+                
                 if (req_id < 0) break;
                 char *prompt = reqs.prompts[req_id];
                 slots[i].prompt_tokens = (int *)malloc((strlen(prompt) + 3) * sizeof(int));
@@ -836,11 +837,13 @@ void test(Transformer *transformer, Tokenizer *tokenizer, const char *model_path
                 }
             }
         }
-#pragma omp critical(counters)
+        
+        #pragma omp critical(counters)
         {
             total.fwd_tokens += mine.fwd_tokens;
             total.gen_tokens += mine.gen_tokens;
         }
+
         delete[] slots;
         free_run_state(&batch_run_state_d[gpu_id]);
     }

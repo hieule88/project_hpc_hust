@@ -42,13 +42,14 @@ ALL_IMPLS=(
   "gpu_optim_b1|$ROOT/bin/runcu|-m test -b 1"
   "$OPT|$ROOT/bin/runcu|-m test -b $BATCH"
   "gpu_pp_4x$BATCH|$ROOT/bin/runpp|-m test -b $BATCH"
+  "gpu_paged_b$BATCH|$ROOT/bin/runpgattn|-m test -b $BATCH"
 )
 IMPLS=()
 for spec in "${ALL_IMPLS[@]}"; do [[ "${spec%%|*}" =~ $ONLY ]] && IMPLS+=("$spec"); done
 REFERENCE=cpu_1t   # -O3, no fast-math: numerical reference for the correctness check
 
 echo "== build"
-make bin/runtest bin/runtest_omp bin/runcu bin/runpp >/dev/null
+make bin/runtest bin/runtest_omp bin/runcu bin/runpp bin/runpgattn >/dev/null
 if git rev-parse -q --verify "$NAIVE_REF" >/dev/null; then
   [ -d .naive ] || git worktree add -q --detach .naive "$NAIVE_REF"
   git -C .naive checkout -q --detach "$NAIVE_REF"
